@@ -20,11 +20,18 @@ from openhands.agent_server import bash_router as bash_router_module
 from openhands.agent_server.api import add_domain_error_handler
 from openhands.agent_server.bash_service import BashEventService
 from openhands.agent_server.config import Config
-from openhands.agent_server.models import BashCommand, BashEventSortOrder, BashOutput
+from openhands.agent_server.models import (
+    BashCommand,
+    BashEventBase,
+    BashEventSortOrder,
+    BashOutput,
+)
+from openhands.agent_server.pub_sub import Subscriber
 from openhands.agent_server.server_details_router import (
     mark_initialization_complete,
     server_details_router,
 )
+from openhands.sdk.conversation.secret_registry import SecretRegistry
 from openhands.sdk.utils.cipher import FERNET_TOKEN_PREFIX, Cipher
 from tests.agent_server.conftest import install_test_context
 
@@ -561,6 +568,68 @@ _SECRET_IN_COMMAND = "printf %s 'header.payload.signature' > /tmp/token"
 def _only_file(directory: Path) -> Path:
     [path] = list(directory.iterdir())
     return path
+
+
+_SECRET_OUTPUT_VALUE = "super-secret-token-123"
+
+
+class _CaptureOutput(Subscriber[BashEventBase]):
+    def __init__(self) -> None:
+        self.events: list[BashEventBase] = []
+
+    async def __call__(self, event: BashEventBase) -> None:
+        self.events.append(event)
+
+
+def _registry_with_secret() -> SecretRegistry:
+    registry = SecretRegistry()
+    registry.track_exported_values({"API_TOKEN": _SECRET_OUTPUT_VALUE})
+    return registry
+
+
+def test_bash_output_is_redacted_at_rest(tmp_path: Path) -> None:
+    events_dir = tmp_path / "bash_events"
+    service = BashEventService(
+        bash_events_dir=events_dir, secret_registry=_registry_with_secret()
+    )
+    event = BashOutput(command_id=uuid4(), stdout=f"token={_SECRET_OUTPUT_VALUE}")
+
+    service._save_event_to_file(event)
+
+    path = _only_file(events_dir)
+    assert _SECRET_OUTPUT_VALUE not in path.read_text()
+    assert "<secret-hidden>" in path.read_text()
+    assert event.stdout == f"token={_SECRET_OUTPUT_VALUE}"
+
+
+@pytest.mark.asyncio
+async def test_bash_output_is_redacted_on_publish(tmp_path: Path) -> None:
+    service = BashEventService(
+        bash_events_dir=tmp_path / "bash_events",
+        secret_registry=_registry_with_secret(),
+    )
+    capture = _CaptureOutput()
+    service._pub_sub.subscribe(capture)
+    await service._emit(
+        BashOutput(command_id=uuid4(), stderr=f"err {_SECRET_OUTPUT_VALUE}")
+    )
+
+    assert len(capture.events) == 1
+    emitted = str(capture.events[0].model_dump())
+    assert _SECRET_OUTPUT_VALUE not in emitted
+    assert "<secret-hidden>" in emitted
+
+
+@pytest.mark.asyncio
+async def test_bash_output_unchanged_without_registry(tmp_path: Path) -> None:
+    service = BashEventService(bash_events_dir=tmp_path / "bash_events")
+    capture = _CaptureOutput()
+    service._pub_sub.subscribe(capture)
+    await service._emit(
+        BashOutput(command_id=uuid4(), stdout=f"token={_SECRET_OUTPUT_VALUE}")
+    )
+
+    assert _SECRET_OUTPUT_VALUE in str(capture.events[0].model_dump())
 
 
 @pytest.mark.asyncio

@@ -50,12 +50,26 @@ def test_no_secrets_leaves_event_unchanged() -> None:
     assert redacted.stdout == "plain output"
 
 
-def test_base64_encoded_secret_is_not_covered() -> None:
+def test_base64_encoded_secret_is_masked() -> None:
     import base64
 
     token = "s3cr3t-value"
     registry = _registry(token)
     encoded = base64.b64encode(token.encode()).decode()
+    event = _event(f"token={encoded}")
+
+    redacted = redact_bash_output(event, registry)
+
+    assert encoded not in (redacted.stdout or "")
+    assert "<secret-hidden>" in (redacted.stdout or "")
+    assert event.stdout == f"token={encoded}"
+
+
+def test_unrelated_base64_is_left_untouched() -> None:
+    import base64
+
+    registry = _registry("s3cr3t-value")
+    encoded = base64.b64encode(b"harmless-text").decode()
     event = _event(encoded)
-    redact_bash_output(event, registry)
-    assert encoded in (event.stdout or "")
+
+    assert redact_bash_output(event, registry).stdout == encoded

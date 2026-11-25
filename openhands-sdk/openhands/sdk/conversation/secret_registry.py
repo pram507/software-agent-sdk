@@ -1,5 +1,6 @@
 """Secrets manager for handling sensitive data in conversations."""
 
+import base64
 import re
 import time
 from collections.abc import Callable, Collection, Mapping
@@ -21,6 +22,9 @@ from openhands.sdk.utils.models import OpenHandsModel
 
 
 logger = get_logger(__name__)
+
+# Single sentinel for every masked secret across the SDK.
+SECRET_MASK: Final[str] = "<secret-hidden>"
 
 # Back-off before retrying a failed source; a failed lookup masks nothing anyway.
 FAILED_LOOKUP_RETRY_SECONDS: Final[float] = 60.0
@@ -152,7 +156,7 @@ class StreamOutputMask:
             if match.start() >= cut:
                 break
             out.append(self._held[pos : match.start()])
-            out.append("<secret-hidden>")
+            out.append(SECRET_MASK)
             pos = match.end()
             end = max(end, match.end())
         out.append(self._held[pos:end])
@@ -327,9 +331,26 @@ class SecretRegistry(OpenHandsModel):
         # longer one and leave the rest in cleartext.
         for value in sorted(exported_values, key=len, reverse=True):
             if value:
-                masked_text = masked_text.replace(value, "<secret-hidden>")
+                masked_text = masked_text.replace(value, SECRET_MASK)
 
         return masked_text
+
+    def mask_encoded_secrets_in_output(self, text: str) -> str:
+        """Mask base64 forms of values already tracked for masking (B-T06).
+
+        Only resolved/exported values are considered: resolving uncached
+        sources here would risk blocking I/O on the agent-server event loop.
+        """
+        if not text:
+            return text
+
+        with self._exported_values_lock:
+            exported_values = tuple(self._exported_values.values())
+        for value in sorted(exported_values, key=len, reverse=True):
+            if value:
+                encoded = base64.b64encode(value.encode()).decode()
+                text = text.replace(encoded, SECRET_MASK)
+        return text
 
     def compile_stream_mask(self) -> StreamOutputMask:
         """Return a streaming masker over the values resolved *so far*.

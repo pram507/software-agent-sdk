@@ -2,8 +2,8 @@
 
 Uses :meth:`SecretRegistry.mask_secrets_in_model` so masking semantics stay in
 one place: the same sentinel and the same "mask every resolved value, not only
-exported" rule as stream/tool output. Call this before persisting or publishing
-a ``BashOutput`` produced by the terminal.
+exported" rule as stream/tool output. Base64 forms of already-tracked values
+are masked too. Call this before persisting or publishing a ``BashOutput``.
 """
 
 from pydantic import BaseModel
@@ -20,4 +20,13 @@ def redact_bash_output[EventT: BaseModel](
     in the event store and on the outgoing stream, so both paths mask exactly
     the same content.
     """
-    return registry.mask_secrets_in_model(event)
+    masked = registry.mask_secrets_in_model(event)
+    data = masked.model_dump()
+    updates = {}
+    for field in ("stdout", "stderr"):
+        text = data.get(field)
+        if isinstance(text, str):
+            redacted = registry.mask_encoded_secrets_in_output(text)
+            if redacted != text:
+                updates[field] = redacted
+    return masked.model_copy(update=updates) if updates else masked
