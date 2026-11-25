@@ -4641,6 +4641,10 @@ export type ConfirmationResponseRequest = {
    * Reason
    */
   reason?: string;
+  /**
+   * Scope
+   */
+  scope?: 'once' | 'session';
 };
 
 /**

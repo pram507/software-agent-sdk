@@ -15,6 +15,7 @@ import {
   SecretValue,
 } from '../types/base';
 import { IWorkspace } from '../workspace/base';
+import { ConfirmationScope } from '../models/conversation';
 
 /**
  * Base conversation options that all conversation types share
@@ -127,8 +128,13 @@ export interface IConversation {
    *
    * @param accept - Whether to accept the pending action
    * @param reason - Optional reason for the decision
+   * @param scope - Use 'session' to grant the pending tools for this session
    */
-  sendConfirmationResponse(accept: boolean, reason?: string): Promise<void>;
+  sendConfirmationResponse(
+    accept: boolean,
+    reason?: string,
+    scope?: ConfirmationScope,
+  ): Promise<void>;
 
   /**
    * Set the title of the conversation.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -1308,7 +1308,7 @@ class Agent(CriticMixin, ResponseDispatchMixin, AgentBase):
         risks, event = self._analyze_for_confirmation(state, action_events)
         if event is not None and on_event is not None:
             on_event(state.secret_registry.mask_secrets_in_model(event))
-        return self._set_confirmation_status(state, risks)
+        return self._set_confirmation_status(state, risks, action_events)
 
     async def _arequires_user_confirmation(
         self,
@@ -1329,7 +1329,7 @@ class Agent(CriticMixin, ResponseDispatchMixin, AgentBase):
                 if sources == state.secret_registry.secret_sources:
                     break
             on_event(event)
-        return self._set_confirmation_status(state, risks)
+        return self._set_confirmation_status(state, risks, action_events)
 
     def _analyze_for_confirmation(
         self, state: ConversationState, action_events: list[ActionEvent]
@@ -1374,14 +1374,27 @@ class Agent(CriticMixin, ResponseDispatchMixin, AgentBase):
 
     @staticmethod
     def _set_confirmation_status(
-        state: ConversationState, risks: list[risk.SecurityRisk]
+        state: ConversationState,
+        risks: list[risk.SecurityRisk],
+        action_events: Sequence[ActionEvent],
     ) -> bool:
-        if any(state.confirmation_policy.should_confirm(risk) for risk in risks):
-            state.transition(
-                ConversationExecutionStatus.WAITING_FOR_CONFIRMATION,
-                "action needs user confirmation",
-            )
-            return True
+        """Apply the confirmation policy, honoring session-scoped grants.
+
+        ``risks`` and ``action_events`` are aligned: each risk came from the
+        analysis of the action at the same position. A tool already granted for
+        this session skips confirmation; otherwise the policy decides, now with
+        the tool name so ``ConfirmTools`` can gate specific tools.
+        """
+        for risk_level, action_event in zip(risks, action_events):
+            tool_name = action_event.tool_name
+            if state.approval_session.is_granted(tool_name):
+                continue
+            if state.confirmation_policy.should_confirm(risk_level, tool_name):
+                state.transition(
+                    ConversationExecutionStatus.WAITING_FOR_CONFIRMATION,
+                    "action needs user confirmation",
+                )
+                return True
 
         return False
 

@@ -286,6 +286,7 @@ export type {
   ACPConversationInfo,
   SendMessageRequest,
   ConfirmationResponseRequest,
+  ConfirmationScope,
   CreateConversationRequest,
   CreateACPConversationRequest,
   UpdateConversationRequest,

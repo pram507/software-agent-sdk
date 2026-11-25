@@ -1779,6 +1779,41 @@ class TestEventServiceRespondToConfirmation:
         event_service.reject_pending_actions.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_respond_to_confirmation_session_scope_grants(self, event_service):
+        """scope=session grants pending tools before resuming the run."""
+        event_service._conversation = MagicMock()
+        event_service.run = AsyncMock()
+        grant = MagicMock()
+        event_service._grant_pending_tools_for_session = grant
+
+        request = ConfirmationResponseRequest(accept=True, scope="session")
+        await event_service.respond_to_confirmation(request)
+
+        grant.assert_called_once_with()
+        event_service.run.assert_awaited_once_with()
+
+    def test_grant_pending_tools_for_session(self, event_service):
+        """Pending action tools receive in-memory session-scoped grants."""
+        action = MagicMock(tool_name="execute_bash")
+        state = MagicMock()
+        event_service._conversation = MagicMock(_state=state)
+
+        with patch(
+            "openhands.agent_server.event_service.ConversationState.get_unmatched_actions",
+            return_value=[action],
+        ):
+            event_service._grant_pending_tools_for_session()
+
+        state.approval_session.grant.assert_called_once_with(
+            "execute_bash", scope="session"
+        )
+
+    def test_confirmation_response_scope_defaults_to_once(self):
+        """Backward compat: responses without scope stay single-use."""
+        request = ConfirmationResponseRequest(accept=True)
+        assert request.scope == "once"
+
+    @pytest.mark.asyncio
     async def test_respond_to_confirmation_rejects_actions(self, event_service):
         """Rejecting confirmation should call reject_pending_actions with reason."""
         event_service._conversation = MagicMock()
