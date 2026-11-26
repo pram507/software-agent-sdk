@@ -19,7 +19,9 @@ from openhands.agent_server.models import (
     ExecuteBashRequest,
 )
 from openhands.agent_server.pub_sub import PubSub, Subscriber
+from openhands.sdk.conversation.secret_registry import SecretRegistry
 from openhands.sdk.logger import get_logger
+from openhands.sdk.security.bash_output_redaction import redact_bash_output
 from openhands.sdk.utils import sanitized_env, utc_now
 from openhands.sdk.utils.cipher import FERNET_TOKEN_PREFIX, Cipher
 
@@ -41,6 +43,9 @@ class BashEventService:
     # lives in the server's environment, never on the volume. None writes
     # plaintext, as before. Files written before encryption still read.
     cipher: Cipher | None = None
+    # When supplied by the deployment, registered secret values are masked in
+    # BashOutput before it is written to disk or published to terminal clients.
+    secret_registry: SecretRegistry | None = None
     _tasks: set[asyncio.Task] = field(default_factory=set, init=False)
     _closed: bool = field(default=False, init=False)
     # Processes of currently running commands, keyed by command id. A None
@@ -96,8 +101,19 @@ class BashEventService:
         result.append(event.id.hex)
         return "_".join(result)
 
+    def _redact_event(self, event: BashEventBase) -> BashEventBase:
+        if self.secret_registry is None or not isinstance(event, BashOutput):
+            return event
+        return redact_bash_output(event, self.secret_registry)
+
+    async def _emit(self, event: BashEventBase) -> None:
+        redacted = self._redact_event(event)
+        self._save_event_to_file(redacted)
+        await self._pub_sub(redacted)
+
     def _save_event_to_file(self, event: BashEventBase) -> None:
         """Save an event to a file, encrypted when a cipher is configured."""
+        event = self._redact_event(event)
         self._ensure_bash_events_dir()
         filename = self._get_event_filename(event)
         filepath = self.bash_events_dir / filename
@@ -383,8 +399,7 @@ class BashEventService:
                                 stderr=chunk if is_stderr else None,
                             )
 
-                            self._save_event_to_file(output_event)
-                            await self._pub_sub(output_event)
+                            await self._emit(output_event)
                             output_order += 1
 
                             # Update the appropriate buffer
@@ -450,8 +465,7 @@ class BashEventService:
                     stderr=final_stderr,
                 )
 
-                self._save_event_to_file(final_output)
-                await self._pub_sub(final_output)
+                await self._emit(final_output)
 
         except Exception as e:
             logger.error(
@@ -467,8 +481,7 @@ class BashEventService:
                 stderr=f"Error executing command: {str(e)}",
             )
 
-            self._save_event_to_file(error_output)
-            await self._pub_sub(error_output)
+            await self._emit(error_output)
         finally:
             self._processes.pop(command.id, None)
             self._stop_requests.discard(command.id)
