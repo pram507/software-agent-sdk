@@ -2976,6 +2976,34 @@ describe('Auxiliary API clients', () => {
     );
   });
 
+  it('ConversationClient sends confirmation scope for session approval', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    ) as typeof fetch;
+
+    const client = new ConversationClient({ host: 'http://example.com' });
+    await client.respondToConfirmation('c1', {
+      accept: true,
+      reason: 'trusted tool',
+      scope: 'session',
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'http://example.com/api/conversations/c1/events/respond_to_confirmation',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          accept: true,
+          reason: 'trusted tool',
+          scope: 'session',
+        }),
+      })
+    );
+  });
+
   it('ConversationClient wraps SDK v1.23.0 conversation endpoints', async () => {
     const event = {
       id: 'event-1',

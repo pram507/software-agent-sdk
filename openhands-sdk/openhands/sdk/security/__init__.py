@@ -3,6 +3,7 @@ from openhands.sdk.security.confirmation_policy import (
     AlwaysConfirm,
     ConfirmationPolicyBase,
     ConfirmRisky,
+    ConfirmTools,
     NeverConfirm,
 )
 from openhands.sdk.security.defense_in_depth import (
@@ -13,6 +14,11 @@ from openhands.sdk.security.ensemble import EnsembleSecurityAnalyzer
 from openhands.sdk.security.grayswan import GraySwanAnalyzer
 from openhands.sdk.security.llm_analyzer import LLMSecurityAnalyzer
 from openhands.sdk.security.risk import SecurityRisk
+from openhands.sdk.security.tool_approval import (
+    ApprovalDecision,
+    ApprovalEntry,
+    ToolApprovalSession,
+)
 from openhands.sdk.security.toolshield_helpers import (
     auto_detect_safety_experiences,
     default_safety_experiences,
@@ -46,4 +52,8 @@ __all__ = [
     "AlwaysConfirm",
     "NeverConfirm",
     "ConfirmRisky",
+    "ConfirmTools",
+    "ToolApprovalSession",
+    "ApprovalDecision",
+    "ApprovalEntry",
 ]

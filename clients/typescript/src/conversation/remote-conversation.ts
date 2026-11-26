@@ -25,6 +25,7 @@ import {
   ConversationInfo,
   SendMessageRequest,
   ConfirmationResponseRequest,
+  ConfirmationScope,
   CreateConversationRequest,
   UpdateConversationRequest,
   UpdateSecretsRequest,
@@ -287,8 +288,12 @@ export class RemoteConversation implements IConversation {
     await this.client.post(`/api/conversations/${this.id}/confirmation_policy`, { policy });
   }
 
-  async sendConfirmationResponse(accept: boolean, reason?: string): Promise<void> {
-    const request: ConfirmationResponseRequest = { accept, reason };
+  async sendConfirmationResponse(
+    accept: boolean,
+    reason?: string,
+    scope?: ConfirmationScope,
+  ): Promise<void> {
+    const request: ConfirmationResponseRequest = { accept, reason, scope };
     await this.client.post(`/api/conversations/${this.id}/events/respond_to_confirmation`, request);
   }
 

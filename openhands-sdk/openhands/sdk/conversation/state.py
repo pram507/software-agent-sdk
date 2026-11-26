@@ -39,6 +39,7 @@ from openhands.sdk.security.confirmation_policy import (
     ConfirmationPolicyBase,
     NeverConfirm,
 )
+from openhands.sdk.security.tool_approval import ToolApprovalSession
 from openhands.sdk.utils.cipher import Cipher
 from openhands.sdk.utils.models import OpenHandsModel
 from openhands.sdk.utils.pydantic_secrets import cipher_context
@@ -338,6 +339,12 @@ class ConversationState(OpenHandsModel):
     )  # FIFO lock for thread safety
     _save_depth: int = PrivateAttr(default=0)  # context-manager nesting depth
     _dirty: bool = PrivateAttr(default=False)  # pending unsaved field changes
+    # Session-scoped tool approval grants. Private (never serialized): a grant
+    # is valid only for this in-memory conversation session, so restarting a
+    # conversation drops every grant.
+    _approval_session: ToolApprovalSession = PrivateAttr(
+        default_factory=ToolApprovalSession
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -358,6 +365,11 @@ class ConversationState(OpenHandsModel):
     @property
     def events(self) -> EventLog:
         return self._events
+
+    @property
+    def approval_session(self) -> ToolApprovalSession:
+        """In-memory session-scoped tool approval grants (never persisted)."""
+        return self._approval_session
 
     def _resolve_active_leaf(self) -> EventID | None:
         """The effective HEAD, resolving a ``None`` ``leaf_event_id`` by lineage.

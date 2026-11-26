@@ -114,9 +114,14 @@ export interface SendMessageRequest {
   run: boolean;
 }
 
+/** How long an accepted approval applies. */
+export type ConfirmationScope = 'once' | 'session';
+
 export interface ConfirmationResponseRequest {
   accept: boolean;
   reason?: string;
+  /** Grant the pending tools for the rest of this in-memory session. */
+  scope?: ConfirmationScope;
 }
 
 export interface CreateConversationRequest {

@@ -2303,6 +2303,8 @@ class EventService:
 
     async def respond_to_confirmation(self, request: ConfirmationResponseRequest):
         if request.accept:
+            if request.scope == "session":
+                self._grant_pending_tools_for_session()
             try:
                 await self.run()
             except ConversationAlreadyRunning:
@@ -2310,6 +2312,26 @@ class EventService:
                 logger.debug("Confirmation accepted but conversation already running")
         else:
             await self.reject_pending_actions(request.reason)
+
+    def _grant_pending_tools_for_session(self) -> None:
+        """Grant all pending action tools for the rest of this session (B-T05).
+
+        The grants live only in the in-memory ``ConversationState``, so they
+        disappear when the conversation is restarted. The agent's confirmation
+        check consults the same session, so these tools will not re-prompt.
+        """
+        if not self._conversation:
+            raise ServiceInactive()
+        state = self._conversation._state
+        with state:
+            pending = ConversationState.get_unmatched_actions(state.active_branch())
+            for action_event in pending:
+                state.approval_session.grant(action_event.tool_name, scope="session")
+        if pending:
+            logger.info(
+                "Granted session approval for tools: %s",
+                sorted({a.tool_name for a in pending}),
+            )
 
     async def react(
         self,

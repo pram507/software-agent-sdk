@@ -721,11 +721,15 @@ export class LocalConversation implements IConversation {
    *
    * Note: Confirmation handling is not yet fully implemented in LocalConversation.
    */
-  async sendConfirmationResponse(accept: boolean, reason?: string): Promise<void> {
+  async sendConfirmationResponse(
+    accept: boolean,
+    reason?: string,
+    scope?: 'once' | 'session',
+  ): Promise<void> {
     this.emitEvent({
       type: 'message',
       timestamp: Date.now(),
-      data: { kind: 'confirmation_response', accept, reason },
+      data: { kind: 'confirmation_response', accept, reason, scope },
     });
     // Resume execution if paused for confirmation
     if (accept) {

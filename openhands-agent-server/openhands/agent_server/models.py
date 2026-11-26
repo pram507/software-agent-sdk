@@ -504,10 +504,16 @@ class AskUserAnswerRequest(BaseModel):
 
 
 class ConfirmationResponseRequest(BaseModel):
-    """Payload to accept or reject a pending action."""
+    """Payload to accept or reject a pending action.
+
+    ``scope="session"`` grants the pending tools for the rest of this
+    conversation session (in-memory only). It is ignored when ``accept`` is
+    False. Defaults to ``"once"`` for backward compatibility.
+    """
 
     accept: bool
     reason: str = "User rejected the action."
+    scope: Literal["once", "session"] = "once"
 
 
 class Success(BaseModel):
